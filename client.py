@@ -45,7 +45,13 @@ class WildfireClient:
                 event_id += 1
 
             elif response.upper() == "U":
-                print("Not Yet Implemented")
+                message = EmergencyMessage("unsubscribe",
+                                           "",
+                                           event_id)
+                with self.outgoing_queue_lock:
+                    pending_ack = PendingAck(message, self.server, 5)
+                    self.pending_ack_queue[event_id] = pending_ack
+                event_id += 1
 
             elif response.upper() == "R":
                 request_type = input("Enter Type: ")

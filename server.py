@@ -39,6 +39,19 @@ class WildfireServer:
                     response = EmergencyMessage("Ack", ack.encode())
                     with self.outgoing_queue_lock:
                         self.outgoing_queue.append((client_address, response))
+
+                elif received_message.message_type == "unsubscribe":
+                    if client_address in self.subscribers:
+                        name = self.subscribers[client_address].name
+                        print(f"{name} unsubscribed")
+                        self.subscribers.pop(client_address)
+                    # Send Acknowledgement regardless of status
+                    ack = Acknowledgement("unsubscribe",
+                                          received_message.event)
+                    response = EmergencyMessage("Ack", ack.encode())
+                    with self.outgoing_queue_lock:
+                        self.outgoing_queue.append((client_address, response))
+
                 elif received_message.message_type == "EventAck":
                     ack = decode_acknowledgement(received_message.message)
                     print(f"Ack Type: {ack.acknowledgement_type}\n"
