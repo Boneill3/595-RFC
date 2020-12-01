@@ -44,6 +44,8 @@ class WildfireServer:
                     subscriber = decode_subscriber(received_message.message)
                     self.subscribers[client_address] = subscriber
                     print(f"{subscriber.name} Subscribed")
+                    now = datetime.datetime.now(self.timezone)
+                    self.last_heartbeat[client_address] = now
                     ack = Acknowledgement("subscribe", received_message.event)
                     response = EmergencyMessage("Ack", ack.encode())
                     with self.outgoing_queue_lock:
@@ -175,8 +177,8 @@ class WildfireServer:
         event_id = randint(0, 99999)
         while not self.quit:
             response = input(
-                "Send (E)mergency message, (N)on-Emergency message, ("
-                "S)kip, (Q)uit or (L)ist Subscribers: ")
+                "Send (E)mergency message, (N)on-Emergency message, (Q)uit "\
+                "List (S)ubscribers or List E(V)ents: ")
 
             if response.upper() == "E":
                 event_id += 1
@@ -209,12 +211,23 @@ class WildfireServer:
                     with self.outgoing_queue_lock:
                         self.outgoing_queue.append((client_address, message))
 
-            elif response.upper() == "L":
+            elif response.upper() == "S":
                 if len(self.subscribers) == 0:
                     print("No Subscribers")
                 else:
                     for client_address, subscriber in self.subscribers.items():
-                        print(f"{client_address}: {subscriber.name}")
+                        print(f"{client_address}: {subscriber.name} "
+                              f"{subscriber.city}, {subscriber.state}")
+
+            elif response.upper() == "V":
+                if len(self.events) == 0:
+                    print("No Events")
+                else:
+                    for event_id, event in self.events.items():
+                        print(f"{event_id}: Level {event.level} Evacuation "
+                              f"waiting for {len(event.waiting_sys_ack)} SYS "
+                              f"ACKS "
+                              f"and {len(event.waiting_user_ack)} User ACKS")
 
             elif response.upper() == "Q":
                 print("Quitting...")

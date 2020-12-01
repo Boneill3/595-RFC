@@ -134,9 +134,12 @@ class WildfireClient:
                     print(f"server {self.server} disconnected!")
                     self.pending_ack_queue.pop(self.heartbeat_event)
                     self.heartbeat_event = None
+                    pop_list = []
                     for event_id, pending_ack in self.pending_ack_queue.items():
                         if pending_ack.destination == self.server:
-                            self.pending_ack_queue.pop(event_id)
+                            pop_list.append(event_id)
+                    for event_id in pop_list:
+                        self.pending_ack_queue.pop(event_id)
 
             try:
                 message, server_address = self.clientSocket.recvfrom(2048)
