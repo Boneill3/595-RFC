@@ -100,8 +100,9 @@ class WildfireClient:
         while not self.quit:
             for event_id, pending_ack in self.pending_ack_queue.items():
                 if pending_ack.is_timed_out():
-                    self.outgoing_queue.append((pending_ack.destination,
-                                                pending_ack.message))
+                    with self.outgoing_queue_lock:
+                        self.outgoing_queue.append((pending_ack.destination,
+                                                    pending_ack.message))
                     pending_ack.update_last_issued()
             with self.outgoing_queue_lock:
                 for client_address, message in self.outgoing_queue:
@@ -118,6 +119,17 @@ class WildfireClient:
                     print(f"{event.message.message_type} Message Received!\n"
                           f"{event.message.message}")
                     event.update_last_issued()
+
+            if self.heartbeat_event is not None \
+                    and self.heartbeat_event in self.pending_ack_queue:
+                heartbeat_event = self.pending_ack_queue[self.heartbeat_event]
+                if heartbeat_event.attempts > 5:
+                    print(f"server {self.server} disconnected!")
+                    self.pending_ack_queue.pop(self.heartbeat_event)
+                    self.heartbeat_event = None
+                    for event_id, pending_ack in self.pending_ack_queue.items():
+                        if pending_ack.destination == self.server:
+                            self.pending_ack_queue.pop(event_id)
 
             try:
                 message, server_address = self.clientSocket.recvfrom(2048)
@@ -140,7 +152,7 @@ class WildfireClient:
                             self.pending_ack_queue.pop(ack.reference)
 
                     elif ack.acknowledgement_type == "heartbeat":
-                        self.pending_ack_queue[ack.reference].timeout = 120
+                        self.pending_ack_queue[ack.reference].timeout = 5
 
                     else:
                         if ack.reference in self.pending_ack_queue:
@@ -155,7 +167,14 @@ class WildfireClient:
                         self.pending_ack_queue.pop(message.event)
 
                 elif message.message_type.startswith("level"):
-                    pending_ack = PendingAck(message, self.server, 5)
+                    if message.message_type == "level1":
+                        display_timeout = 1800
+                    elif message.message_type == "level2":
+                        display_timeout = 60
+                    else:
+                        display_timeout = 5
+                    pending_ack = PendingAck(message, self.server,
+                                             display_timeout)
                     if message.event not in self.received_events:
                         self.received_events[message.event] = pending_ack
 
@@ -163,6 +182,7 @@ class WildfireClient:
                     message = EmergencyMessage("EventAck", ack.encode())
                     with self.outgoing_queue_lock:
                         self.outgoing_queue.append((self.server, message))
+
 
                 else:
                     print(f"{message.message_type} message received! \n"

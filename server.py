@@ -26,6 +26,15 @@ class WildfireServer:
     def receiver(self):
         while not self.quit:
             try:
+                now = datetime.datetime.now(self.timezone)
+                twenty_five_secs_ago = now - datetime.timedelta(seconds=25)
+                for client_address, last_heartbeat in self.last_heartbeat.items():
+                    if last_heartbeat < twenty_five_secs_ago \
+                            and client_address in self.subscribers:
+                        name = self.subscribers[client_address].name
+                        print(f"{name} force unsubscribed")
+                        self.subscribers.pop(client_address)
+
                 received_message, client_address = self.serverSocket.recvfrom(
                     2048)
                 received_message = decode_message(received_message)
@@ -81,7 +90,7 @@ class WildfireServer:
                         aqi_message = "151: Some members of the general " \
                                       "public may experience health effects; " \
                                       "members of sensitive groups may " \
-                                      "experience more serious health "\
+                                      "experience more serious health " \
                                       "effects."
                         response = EmergencyMessage("AQI", aqi_message,
                                                     received_message.event)
@@ -119,12 +128,20 @@ class WildfireServer:
 
     def sender(self):
         while not self.quit:
-            five_minutes_ago = datetime.datetime.now(self.timezone) - \
-                             datetime.timedelta(seconds=5)
+            now = datetime.datetime.now(self.timezone)
+            five_seconds_ago = now - datetime.timedelta(seconds=5)
+            five_minutes_ago = now - datetime.timedelta(minutes=5)
+            one_hour_ago = now - datetime.timedelta(hours=1)
             for event_id, event in self.events.items():
+                if event.level == 1:
+                    event_timeout = one_hour_ago
+                elif event.level == 2:
+                    event_timeout = five_minutes_ago
+                else:
+                    event_timeout = five_seconds_ago
                 if len(event.waiting_sys_ack) > 0 and \
                         (event.last_issued is None or
-                         event.last_issued < five_minutes_ago):
+                         event.last_issued < event_timeout):
                     event.update_last_issued()
                     for client_address in event.waiting_sys_ack.keys():
                         with self.outgoing_queue_lock:
@@ -143,7 +160,7 @@ class WildfireServer:
         while not self.quit:
             response = input(
                 "Send (E)mergency message, (N)on-Emergency message, ("
-                "S)kip or (Q)uit, (L)ist Subscribers: ")
+                "S)kip, (Q)uit or (L)ist Subscribers: ")
 
             if response.upper() == "E":
                 event_id += 1

@@ -24,6 +24,10 @@ class PendingAck:
     def destination(self):
         return self.__destination
 
+    @property
+    def attempts(self):
+        return self.__attempts
+
     def update_last_issued(self):
         self.__last_issued = datetime.datetime.now(self.__timezone)
         self.__attempts += 1
