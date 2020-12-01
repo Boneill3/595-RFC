@@ -13,9 +13,7 @@ class WildfireServer:
         self.serverPort = port
         self.serverSocket = socket(AF_INET, SOCK_DGRAM)
         self.subscribers = dict()
-        self.subscribers_lock = threading.Lock()
         self.events = dict()
-        self.events_lock = threading.Lock()
         self.serverSocket.bind(('', self.serverPort))
         self.serverSocket.settimeout(5)
         print("The server is ready to receive")
@@ -100,20 +98,19 @@ class WildfireServer:
                     print(f"Ack Type: {ack.acknowledgement_type}\n"
                           f"Reference: {ack.reference}")
 
-                    with self.events_lock:
-                        try:
-                            emergency_event = self.events[ack.reference]
-                            if ack.acknowledgement_type == "System":
-                                emergency_event.log_system_ack(client_address)
-                            if ack.acknowledgement_type == "User":
-                                ack = Acknowledgement("Ack", ack.reference)
-                                response = EmergencyMessage("Ack", ack.encode())
-                                with self.outgoing_queue_lock:
-                                    self.outgoing_queue.append(
-                                        (client_address, response))
-                                emergency_event.log_user_ack(client_address)
-                        except KeyError:
-                            print("Invalid or Duplicate Event ID Referenced")
+                    try:
+                        emergency_event = self.events[ack.reference]
+                        if ack.acknowledgement_type == "System":
+                            emergency_event.log_system_ack(client_address)
+                        if ack.acknowledgement_type == "User":
+                            ack = Acknowledgement("Ack", ack.reference)
+                            response = EmergencyMessage("Ack", ack.encode())
+                            with self.outgoing_queue_lock:
+                                self.outgoing_queue.append(
+                                    (client_address, response))
+                            emergency_event.log_user_ack(client_address)
+                    except KeyError:
+                        print("Invalid or Duplicate Event ID Referenced")
 
                 else:
                     print("Invalid Message Received")
@@ -122,16 +119,18 @@ class WildfireServer:
 
     def sender(self):
         while not self.quit:
-            with self.outgoing_queue_lock and self.events_lock:
-                five_minutes_ago = datetime.datetime.now(self.timezone) - \
-                                 datetime.timedelta(seconds=5)
-                for event_id, event in self.events.items():
-                    if len(event.waiting_sys_ack) > 0 and \
-                            (event.last_issued is None or
-                             event.last_issued < five_minutes_ago):
-                        for client_address in event.waiting_sys_ack.keys():
-                            self.outgoing_queue.append((client_address, event.message))
-                        event.update_last_issued()
+            five_minutes_ago = datetime.datetime.now(self.timezone) - \
+                             datetime.timedelta(seconds=5)
+            for event_id, event in self.events.items():
+                if len(event.waiting_sys_ack) > 0 and \
+                        (event.last_issued is None or
+                         event.last_issued < five_minutes_ago):
+                    event.update_last_issued()
+                    for client_address in event.waiting_sys_ack.keys():
+                        with self.outgoing_queue_lock:
+                            self.outgoing_queue.append(
+                                (client_address, event.message))
+
             with self.outgoing_queue_lock:
                 for client_address, message in self.outgoing_queue:
                     self.serverSocket.sendto(message.encode(), client_address)
@@ -150,10 +149,7 @@ class WildfireServer:
                 event_id += 1
                 event = create_emergency(event_id, self.subscribers)
                 if event is not None:
-                    print("Sending Event")
-                    with self.events_lock:
-                        print("Save Event")
-                        self.events[event_id] = event
+                    self.events[event_id] = event
 
             elif response.upper() == "N":
                 request_type = input("Request (T)ime, (W)eather or (A)QI, "
@@ -176,8 +172,8 @@ class WildfireServer:
                 else:
                     continue
 
-                with self.outgoing_queue_lock:
-                    for client_address in self.subscribers:
+                for client_address in self.subscribers:
+                    with self.outgoing_queue_lock:
                         self.outgoing_queue.append((client_address, message))
 
             elif response.upper() == "L":
@@ -203,35 +199,15 @@ def create_emergency(event_id, subscribers):
     return None
 
 
-def start():
+if __name__ == "__main__":
     port = 12000
     print(f"Starting Server on port {port}..")
     server = WildfireServer(port)
+    jobs = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        receiver = executor.submit(server.receiver)
-        interface = executor.submit(server.interface)
-        sender = executor.submit(server.sender)
+        jobs.append(executor.submit(server.receiver))
+        jobs.append(executor.submit(server.interface))
+        jobs.append(executor.submit(server.sender))
+        for job in jobs:
+            data = job.result()
     print("Exited")
-
-
-"""
-        if len(events) > 0:
-            for event_id in events:
-                event = events[event_id]
-                print(f"Event: {event.event_id}\n"
-                      f"Message: {event.message.message}\n"
-                      f"Waiting Sys: {len(event.waiting_sys_ack)}\n"
-                      f"Waiting User: {len(event.waiting_user_ack)}\n"
-                      f"last_issued: {event.last_issued}")
-
-                timezone = event.timezone
-                five_seconds_ago = datetime.datetime.now(timezone) - \
-                                   datetime.timedelta(seconds=5)
-                if len(event.waiting_sys_ack) > 0 and \
-                        event.level == "1" and \
-                        event.last_issued < five_seconds_ago:
-                    print("resend emergency message")
-                    send_emergency(event)"""
-
-if __name__ == "__main__":
-    start()

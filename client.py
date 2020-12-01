@@ -40,9 +40,8 @@ class WildfireClient:
                 message = EmergencyMessage("subscribe",
                                            self.subscriber.encode(),
                                            event_id)
-                with self.outgoing_queue_lock:
-                    pending_ack = PendingAck(message, self.server, 5)
-                    self.pending_ack_queue[event_id] = pending_ack
+                pending_ack = PendingAck(message, self.server, 5)
+                self.pending_ack_queue[event_id] = pending_ack
                 # event_id + 1 reserved for heartbeat
                 event_id += 2
 
@@ -144,7 +143,6 @@ class WildfireClient:
                         self.pending_ack_queue[ack.reference].timeout = 120
 
                     else:
-                        print(f"Unknown Ack Type received")
                         if ack.reference in self.pending_ack_queue:
                             self.pending_ack_queue.pop(ack.reference)
 
@@ -174,58 +172,6 @@ class WildfireClient:
             except timeout:
                 test = 123
 
-
-"""
-def request_data(request_type):
-    requestMessage = EmergencyMessage("request", request_type)
-    clientSocket.sendto(requestMessage.encode(), (serverName, serverPort))
-    clientSocket.settimeout(1)
-    ack, serverAddress = clientSocket.recvfrom(2048)
-    ack = decode_message(ack)
-    ack = decode_acknowledgement(ack.message)
-
-
-def send_heartbeat(id):
-    heartbeatMessage = EmergencyMessage("heartbeat", id)
-    clientSocket.sendto(heartbeatMessage.encode(), (serverName, serverPort))
-
-
-response = "Y"
-
-try:
-    ack, serverAddress = clientSocket.recvfrom(2048)
-    ack = decode_message(ack)
-    ack = decode_acknowledgement(ack.message)
-    print(f"ACK Received!\nType: {ack.acknowledgement_type}\nRef: "
-          f"{ack.reference}")
-
-except timeout:
-    print("ACK TIMEOUT OCCURRED")
-    response = "N"
-
-while response.upper() == "Y":
-    try:
-        message, serverAddress = clientSocket.recvfrom(2048)
-        message = decode_message(message)
-        print(
-            f"Message Type: {message.message_type}\nMessage: {message.message}")
-        user_ack = input("Send System Ack? (Y/N): ")
-        if user_ack.upper() == "Y":
-            ack = Acknowledgement("System", message.event)
-            message = EmergencyMessage("EventAck", ack.encode())
-            clientSocket.sendto(message.encode(), (serverName, serverPort))
-        user_ack = input("Send User Ack? (Y/N): ")
-        if user_ack.upper() == "Y":
-            ack = Acknowledgement("User", message.event)
-            message = EmergencyMessage("EventAck", ack.encode())
-            clientSocket.sendto(message.encode(), (serverName, serverPort))
-
-
-    except timeout:
-        response = input("Continue (Y/N): ")
-
-clientSocket.close()
-"""
 
 if __name__ == '__main__':
     print(f"Starting client...")
