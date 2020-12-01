@@ -41,8 +41,8 @@ class WildfireServer:
                         self.outgoing_queue.append((client_address, response))
                 elif received_message.message_type == "EventAck":
                     ack = decode_acknowledgement(received_message.message)
-                    print(
-                        f"Ack Type: {ack.acknowledgement_type}\nReference: {ack.reference}")
+                    print(f"Ack Type: {ack.acknowledgement_type}\n"
+                          f"Reference: {ack.reference}")
 
                     with self.events_lock:
                         try:
@@ -50,9 +50,14 @@ class WildfireServer:
                             if ack.acknowledgement_type == "System":
                                 emergency_event.log_system_ack(client_address)
                             if ack.acknowledgement_type == "User":
+                                ack = Acknowledgement("Ack", ack.reference)
+                                response = EmergencyMessage("Ack", ack.encode())
+                                with self.outgoing_queue_lock:
+                                    self.outgoing_queue.append(
+                                        (client_address, response))
                                 emergency_event.log_user_ack(client_address)
                         except KeyError:
-                            print("Invalid Event ID Referenced")
+                            print("Invalid or Duplicate Event ID Referenced")
 
                 elif received_message.message_type == "request":
                     if received_message.message == "Time":

@@ -13,6 +13,7 @@ class WildfireClient:
         self.clientSocket = socket(AF_INET, SOCK_DGRAM)
         self.clientSocket.settimeout(5)
         self.pending_ack_queue = dict()
+        self.received_events = dict()
         response = input('Use Default Name and Address? (Y/N): ')
         self.outgoing_queue = []
         self.outgoing_queue_lock = threading.Lock()
@@ -31,7 +32,8 @@ class WildfireClient:
     def interface(self):
         event_id = randint(0, 99999)
         while not self.quit:
-            response = input("(S)ubscribe, (U)nsubscribe, (R)equest, (Q)uit")
+            response = input("(S)ubscribe, (U)nsubscribe, (R)equest, (Q)uit, "
+                             "(A)ck Messages")
 
             if response.upper() == "S":
                 message = EmergencyMessage("subscribe",
@@ -55,6 +57,20 @@ class WildfireClient:
                 print("Quitting...")
                 self.quit = True
 
+            elif response.upper() == "A":
+                response = ""
+                while response != -1:
+                    for event_id, event in self.received_events.items():
+                        print(f"{event_id}: {event.message.message_type} - "
+                              f"{event.message.message}")
+                    response = input("Enter id to acknowledge or -1 to exit: ")
+                    event_ack = self.received_events.pop(response)
+                    if event_ack is not None:
+                        ack = Acknowledgement("User", response)
+                        message = EmergencyMessage("EventAck", ack.encode())
+                        pending_ack = PendingAck(message, self.server, 5)
+                        self.pending_ack_queue[response] = pending_ack
+
     def sender(self):
         while not self.quit:
             for event_id, pending_ack in self.pending_ack_queue.items():
@@ -72,6 +88,12 @@ class WildfireClient:
 
     def receiver(self):
         while not self.quit:
+            for event_id, event in self.received_events.items():
+                if event.is_timed_out():
+                    print(f"{event.message.message_type} Message Received!\n"
+                          f"{event.message.message}")
+                    event.update_last_issued()
+
             try:
                 message, server_address = self.clientSocket.recvfrom(2048)
                 print(f"Message Received from {server_address}")
@@ -83,21 +105,19 @@ class WildfireClient:
                     self.pending_ack_queue.pop(ack.reference)
 
                 elif message.message_type.startswith("level"):
-                    print(f"{message.message_type} Message Received!\n"
-                          f"{message.message}")
+                    pending_ack = PendingAck(message, self.server, 5)
+                    if message.event not in self.received_events:
+                        self.received_events[message.event] = pending_ack
+
                     ack = Acknowledgement("System", message.event)
                     message = EmergencyMessage("EventAck", ack.encode())
                     with self.outgoing_queue_lock:
-
                         self.outgoing_queue.append((self.server, message))
 
                 else:
                     print(f"{message.message_type} message received! \n"
                           f"source: {server_address} \n"
                           f"{message.message}")
-                    # ack = Acknowledgement("System", message.event)
-                    # with self.outgoing_queue_lock:
-                    #    self.outgoing_queue.append((self.server, ack))
 
             except timeout:
                 test = 123
@@ -158,8 +178,9 @@ clientSocket.close()
 if __name__ == '__main__':
     print(f"Starting client...")
     client = WildfireClient()
+    jobs = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        receiver = executor.submit(client.receiver)
-        interface = executor.submit(client.interface)
-        sender = executor.submit(client.sender)
+        jobs.append(executor.submit(client.receiver))
+        jobs.append(executor.submit(client.interface))
+        jobs.append(executor.submit(client.sender))
     print("Exited")

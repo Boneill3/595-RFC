@@ -17,8 +17,8 @@ class PendingAck:
         return self.__message
 
     @property
-    def last_sent(self):
-        return self.__last_sent
+    def last_issued(self):
+        return self.__last_issued
 
     @property
     def destination(self):
