@@ -52,6 +52,33 @@ class WildfireServer:
                     with self.outgoing_queue_lock:
                         self.outgoing_queue.append((client_address, response))
 
+                elif received_message.message_type == "request":
+                    if received_message.message == "time":
+                        now = str(datetime.datetime.now(self.timezone))
+                        response = EmergencyMessage("time", now,
+                                                    received_message.event)
+
+                    elif received_message.message == "weather":
+                        response = EmergencyMessage("weather", "70 degrees, "
+                                                               "clear",
+                                                    received_message.event)
+
+                    elif received_message.message == "AQI":
+                        aqi_message = "151: Some members of the general " \
+                                      "public may experience health effects; " \
+                                      "members of sensitive groups may " \
+                                      "experience more serious health "\
+                                      "effects."
+                        response = EmergencyMessage("AQI", aqi_message,
+                                                    received_message.event)
+
+                    else:
+                        continue
+
+                    with self.outgoing_queue_lock:
+                        self.outgoing_queue.append(
+                            (client_address, response))
+
                 elif received_message.message_type == "EventAck":
                     ack = decode_acknowledgement(received_message.message)
                     print(f"Ack Type: {ack.acknowledgement_type}\n"
@@ -71,14 +98,6 @@ class WildfireServer:
                                 emergency_event.log_user_ack(client_address)
                         except KeyError:
                             print("Invalid or Duplicate Event ID Referenced")
-
-                elif received_message.message_type == "request":
-                    if received_message.message == "Time":
-                        response_message = EmergencyMessage("Time",
-                                                            datetime.datetime.now())
-                        with self.outgoing_queue_lock:
-                            self.outgoing_queue.append((
-                                client_address, response_message))
 
                 else:
                     print("Invalid Message Received")
@@ -121,7 +140,25 @@ class WildfireServer:
                         self.events[event_id] = event
 
             elif response.upper() == "N":
-                print("Not yet implemented!")
+                request_type = input("Request (T)ime, (W)eather or (A)QI: ")
+                if request_type == "T":
+                    now = str(datetime.datetime.now(self.timezone))
+                    message = EmergencyMessage("time", now)
+                elif request_type == "W":
+                    message = EmergencyMessage("weather", "70 degrees, clear")
+                elif request_type == "A":
+                    aqi_message = "151: Some members of the general " \
+                                  "public may experience health effects; " \
+                                  "members of sensitive groups may " \
+                                  "experience more serious health " \
+                                  "effects."
+                    message = EmergencyMessage("AQI", aqi_message)
+                else:
+                    continue
+
+                with self.outgoing_queue_lock:
+                    for client_address in self.subscribers:
+                        self.outgoing_queue.append((client_address, message))
 
             elif response.upper() == "L":
                 if len(self.subscribers) == 0:

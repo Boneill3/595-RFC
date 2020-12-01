@@ -54,10 +54,20 @@ class WildfireClient:
                 event_id += 1
 
             elif response.upper() == "R":
-                request_type = input("Enter Type: ")
-                message = EmergencyMessage("request", request_type)
-                with self.outgoing_queue_lock:
-                    self.outgoing_queue.append((self.server, message))
+                request_type = input("Request (T)ime, (W)eather or (A)QI: ")
+                if request_type == "T":
+                    request_type = "time"
+                elif request_type == "W":
+                    request_type = "weather"
+                elif request_type == "A":
+                    request_type = "AQI"
+                else:
+                    continue
+
+                message = EmergencyMessage("request", request_type, event_id)
+                pending_ack = PendingAck(message, self.server, 20)
+                self.pending_ack_queue[event_id] = pending_ack
+                event_id += 1
 
             elif response.upper() == "Q":
                 print("Quitting...")
@@ -65,17 +75,20 @@ class WildfireClient:
 
             elif response.upper() == "A":
                 response = ""
-                while response != -1:
+                while response != "-1":
                     for event_id, event in self.received_events.items():
                         print(f"{event_id}: {event.message.message_type} - "
                               f"{event.message.message}")
                     response = input("Enter id to acknowledge or -1 to exit: ")
-                    event_ack = self.received_events.pop(response)
-                    if event_ack is not None:
-                        ack = Acknowledgement("User", response)
-                        message = EmergencyMessage("EventAck", ack.encode())
-                        pending_ack = PendingAck(message, self.server, 5)
-                        self.pending_ack_queue[response] = pending_ack
+                    try:
+                        if int(response) in self.received_events:
+                            self.received_events.pop(int(response))
+                            ack = Acknowledgement("User", int(response))
+                            message = EmergencyMessage("EventAck", ack.encode())
+                            pending_ack = PendingAck(message, self.server, 5)
+                            self.pending_ack_queue[int(response)] = pending_ack
+                    except ValueError:
+                        continue
 
     def sender(self):
         while not self.quit:
@@ -109,6 +122,13 @@ class WildfireClient:
                     print(f"ACK Received!\nType: {ack.acknowledgement_type}\n"
                           f"Ref: {ack.reference}")
                     self.pending_ack_queue.pop(ack.reference)
+
+                elif message.message_type == "time" \
+                        or message.message_type == "weather" \
+                        or message.message_type == "AQI":
+                    print(f"{message.message_type} received. {message.message}")
+                    if message.event in self.pending_ack_queue:
+                        self.pending_ack_queue.pop(message.event)
 
                 elif message.message_type.startswith("level"):
                     pending_ack = PendingAck(message, self.server, 5)
