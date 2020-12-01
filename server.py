@@ -22,6 +22,7 @@ class WildfireServer:
         self.quit = False
         self.outgoing_queue = []
         self.outgoing_queue_lock = threading.Lock()
+        self.last_heartbeat = dict()
         self.timezone = timezone
 
     def receiver(self):
@@ -31,6 +32,7 @@ class WildfireServer:
                     2048)
                 received_message = decode_message(received_message)
                 print(f"Message Received from {client_address}")
+
                 if received_message.message_type == "subscribe":
                     subscriber = decode_subscriber(received_message.message)
                     self.subscribers[client_address] = subscriber
@@ -51,6 +53,20 @@ class WildfireServer:
                     response = EmergencyMessage("Ack", ack.encode())
                     with self.outgoing_queue_lock:
                         self.outgoing_queue.append((client_address, response))
+
+                elif received_message.message_type == "heartbeat":
+                    if client_address in self.subscribers:
+                        now = datetime.datetime.now(self.timezone)
+                        self.last_heartbeat[client_address] = now
+                        ack = Acknowledgement("heartbeat",
+                                              received_message.event)
+                        response = EmergencyMessage("Ack", ack.encode())
+                        with self.outgoing_queue_lock:
+                            self.outgoing_queue.append((client_address,
+                                                        response))
+                    else:
+                        print(f"heartbeat from non-subscriber "
+                              f"{client_address} ignored")
 
                 elif received_message.message_type == "request":
                     if received_message.message == "time":
@@ -140,7 +156,8 @@ class WildfireServer:
                         self.events[event_id] = event
 
             elif response.upper() == "N":
-                request_type = input("Request (T)ime, (W)eather or (A)QI: ")
+                request_type = input("Request (T)ime, (W)eather or (A)QI, "
+                                     "(M)essage: ")
                 if request_type == "T":
                     now = str(datetime.datetime.now(self.timezone))
                     message = EmergencyMessage("time", now)
@@ -153,6 +170,9 @@ class WildfireServer:
                                   "experience more serious health " \
                                   "effects."
                     message = EmergencyMessage("AQI", aqi_message)
+                elif request_type == "M":
+                    message = input("Broadcast Message (Warning unreliable): ")
+                    message = EmergencyMessage("message", message, event_id)
                 else:
                     continue
 

@@ -8,7 +8,7 @@ class PendingAck:
         self.__message = message
         self.__last_issued = None
         self.__destination = destination
-        self.__timeout = timeout
+        self.timeout = timeout
         self.__attempts = 0
         self.__timezone = timezone
 
@@ -33,6 +33,6 @@ class PendingAck:
             return True
 
         timeout = datetime.datetime.now(self.__timezone) - \
-                  datetime.timedelta(seconds=self.__timeout)
+                  datetime.timedelta(seconds=self.timeout)
 
         return self.__last_issued < timeout
