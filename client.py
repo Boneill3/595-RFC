@@ -34,7 +34,7 @@ class WildfireClient:
         event_id = randint(0, 99999)
         while not self.quit:
             response = input("(S)ubscribe, (U)nsubscribe, (R)equest, (Q)uit, "
-                             "(A)ck Messages")
+                             "(A)ck Messages or SOS (M)essage: ")
 
             if response.upper() == "S":
                 message = EmergencyMessage("subscribe",
@@ -96,6 +96,13 @@ class WildfireClient:
                     except ValueError:
                         continue
 
+            elif response.upper() == "M":
+                message = input("SOS Message: ")
+                message = EmergencyMessage("SOS", message, event_id)
+                pending_ack = PendingAck(message, self.server, 5)
+                self.pending_ack_queue[event_id] = pending_ack
+                event_id += 1
+
     def sender(self):
         while not self.quit:
             for event_id, pending_ack in self.pending_ack_queue.items():
@@ -144,7 +151,7 @@ class WildfireClient:
                         event_id = ack.reference + 1
                         self.heartbeat_event = event_id
                         message = EmergencyMessage("heartbeat", "", event_id)
-                        pending_ack = PendingAck(message, self.server, 5)
+                        pending_ack = PendingAck(message, self.server, 15)
                         self.pending_ack_queue[event_id] = pending_ack
 
                     elif ack.acknowledgement_type == "unsubscribe":
@@ -152,7 +159,8 @@ class WildfireClient:
                             self.pending_ack_queue.pop(ack.reference)
 
                     elif ack.acknowledgement_type == "heartbeat":
-                        self.pending_ack_queue[ack.reference].timeout = 5
+                        if ack.reference in self.pending_ack_queue:
+                            self.pending_ack_queue[ack.reference].timeout = 5
 
                     else:
                         if ack.reference in self.pending_ack_queue:

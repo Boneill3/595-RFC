@@ -76,6 +76,10 @@ class WildfireServer:
                               f"{client_address} ignored")
 
                 elif received_message.message_type == "request":
+                    if client_address not in self.subscribers:
+                        print(f"Request from non-subscriber {client_address} "
+                              f"ignored")
+                        continue
                     if received_message.message == "time":
                         now = str(datetime.datetime.now(self.timezone))
                         response = EmergencyMessage("time", now,
@@ -99,8 +103,7 @@ class WildfireServer:
                         continue
 
                     with self.outgoing_queue_lock:
-                        self.outgoing_queue.append(
-                            (client_address, response))
+                        self.outgoing_queue.append((client_address, response))
 
                 elif received_message.message_type == "EventAck":
                     ack = decode_acknowledgement(received_message.message)
@@ -120,6 +123,19 @@ class WildfireServer:
                             emergency_event.log_user_ack(client_address)
                     except KeyError:
                         print("Invalid or Duplicate Event ID Referenced")
+
+                elif received_message.message_type == "SOS":
+                    if client_address not in self.subscribers:
+                        print(f"SOS from non-subscriber {client_address} "
+                              f"ignored")
+                        continue
+                    name = self.subscribers[client_address].name
+                    print(f"SOS Received from {name}: "
+                          f"{received_message.message}")
+                    ack = Acknowledgement("Ack", received_message.event)
+                    response = EmergencyMessage("Ack", ack.encode())
+                    with self.outgoing_queue_lock:
+                        self.outgoing_queue.append((client_address, response))
 
                 else:
                     print("Invalid Message Received")
